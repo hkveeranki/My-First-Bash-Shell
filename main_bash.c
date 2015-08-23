@@ -30,15 +30,12 @@ char delim[2]=" ";
 char cmd[MAX_LENGTH],cmd_given[MAX_LENGTH],curdir[MAX_LENGTH];
 
 void handle_signal(int signo){
-	
 	printf("\n%s @ %s: ",usrname,hostname);
-
 	if ( strlen(homedir)>strlen(curdir)) printf("%s $ ",curdir);
-
 	else  printf("~%s $ ",curdir+strlen(homedir));
-
 	fflush(stdout);
 }
+
 int main(int argc,char* argv[],char* envp[]){
 
 	/* Variable and stuff */
@@ -140,9 +137,9 @@ int main(int argc,char* argv[],char* envp[]){
 						if (errno){
 							if (errno==10)
 								fprintf(stderr,"%s: cd: %s: No Such file or directory\n",argv[0],mypath);
-							//chdir(origin);
 							else 
 								fprintf(stderr,"%s: cd: %s/: %s\n",argv[0],mypath,strerror(errno));
+							chdir(origin);
 							break;				
 						}
 					}

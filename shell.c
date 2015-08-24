@@ -9,6 +9,8 @@
 #include <sys/wait.h>
 #include <pwd.h>
 #include <signal.h>
+#include <proccache.h>
+#include <cd.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -45,6 +47,7 @@ int main(int argc,char* argv[],char* envp[]){
 	char tmp1[100],tmp2[100];
 
 	/* Doing Malloc */
+
 	origin=(char *)malloc(MAX_LENGTH*sizeof(char));
 	mypath=(char *)malloc(MAX_LENGTH*sizeof(char));
 	usrname=(char*)malloc(MAX_LENGTH*sizeof(char));
@@ -61,15 +64,19 @@ int main(int argc,char* argv[],char* envp[]){
 
 	signal(SIGINT, SIG_IGN);
 	signal(SIGINT, handle_signal);
+
 	while(1){
+
 		bgflag=0;
 		getcwd(curdir,MAX_LENGTH);
 		bzero(cmd,MAX_LENGTH);
-		while( (pid=waitpid(-1,&mysignal,WNOHANG))>0 ){
+
+		while( (pid=waitpid(-1,&mysignal,WNOHANG))>0){
 			printf("Process %s with PID :",cache[pid]);
 			printf(" %d ",pid);
 			puts("Exitted\n");
 		}
+
 
 		printf("%s @ %s: ",usrname,hostname);
 
@@ -81,6 +88,7 @@ int main(int argc,char* argv[],char* envp[]){
 		if(!fgets(cmd_given,MAX_LENGTH,stdin))break;
 
 		index=0;
+
 		while(cmd_given[index]!='\0'){
 
 			i=0;
@@ -101,6 +109,7 @@ int main(int argc,char* argv[],char* envp[]){
 				bgflag=1;
 				cmd[cmd_len-2]='\0';
 			}
+
 			token= (char *)strtok(cmd,delim);
 
 			if (token[strlen(token)-1]=='\n')
@@ -115,37 +124,12 @@ int main(int argc,char* argv[],char* envp[]){
 			}
 
 			else if ((strcmp(cmd,"cd"))==0){
-				getcwd(origin,MAX_LENGTH);
-				i=strlen(token)+1;
-				int j=0;
-				while(cmd[i] && cmd[i]!='\n'){
-					mypath[j]=cmd[i];
-					j++;
-					i++;
-				}
-				mypath[j++]='\0';
-				if (cmd[strlen(token)+1]=='/') chdir("/");
-				cmd[cmd_len-1]='\0';
-				while(token!=NULL){
-					token=(char *)strtok(NULL,"/");
-					if (token!=NULL){
-						if (strcmp(token,"~")==0){
-							chdir(homedir);
-						}
-						else
-							chdir(token);
-						if (errno){
-							if (errno==10)
-								fprintf(stderr,"%s: cd: %s: No Such file or directory\n",argv[0],mypath);
-							else 
-								fprintf(stderr,"%s: cd: %s/: %s\n",argv[0],mypath,strerror(errno));
-							chdir(origin);
-							break;				
-						}
-					}
-				}
+				token=strtok(NULL," \n");
+				if(token!=NULL)
+					implement_cd(token,homedir,argv[0],cmd,curdir);
+				else chdir(homedir);
 			}
-			else if (strcmp(cmd,"exit")==0){
+			else if (strcmp(cmd,"exit")==0 ){
 				return 0;
 			}
 			else{
@@ -159,27 +143,20 @@ int main(int argc,char* argv[],char* envp[]){
 						token=(char *)strtok(NULL," \n");
 					}
 					a[tmp]=NULL;
-					execvp(a[0],a);
-					if (errno==2 && strlen(a[0])>1)fprintf(stderr,"%s: command not found\n",a[0]);
+					int err=execvp(a[0],a);
+					if (err==-1 && errno==2 )fprintf(stderr,"%s: command not found\n",a[0]);
 					_exit(0);
 				}
 				else{
 					//Parent Process
-					i=0;
-					sprintf(tmp1,"/proc/%d/cmdline",pid);
-					FILE *filep=fopen(tmp1,"r");
-					long long int lag=100000000;
-					while(lag--);
-					while((c=fgetc(filep))!=EOF){
-						tmp2[i++]=c;
-					}
-					strcpy(cache[pid],tmp2);
+					
+					storeproc(pid,cache);
 					if (bgflag==0)
 						waitpid(pid,&mysignal,0);	
 				}
 			}
 		}
 	}
-	printf("\n");
+	printf("exit\n");
 	return 0;
 }

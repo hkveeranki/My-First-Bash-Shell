@@ -16,7 +16,9 @@
 #endif
 
 #define MAX_LENGTH 1024
+
 void implement_cd(char *path,char *home,char *exe,char *cmd,char *origin){
+	
 	char *token=(char*)malloc(MAX_LENGTH*sizeof(char));
 	char *mypath=(char*)malloc(MAX_LENGTH*sizeof(char));
 	
@@ -24,6 +26,7 @@ void implement_cd(char *path,char *home,char *exe,char *cmd,char *origin){
 		chdir("/");
 		strcpy(mypath,"/");
 	}
+
 	token=strtok(path,"/");
 	while(token!=NULL){
 		strcat(mypath,token);
@@ -34,7 +37,7 @@ void implement_cd(char *path,char *home,char *exe,char *cmd,char *origin){
 			return ;
 		}
 		token=strtok(NULL,"/");
+		strcat(mypath,"/");
 	}	
 	
 }
-

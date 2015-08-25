@@ -11,6 +11,8 @@
 #include <signal.h>
 #include <proccache.h>
 #include <cd.h>
+#include <implement.h>
+#include <echo.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -116,11 +118,7 @@ int main(int argc,char* argv[],char* envp[]){
 				token[strlen(token)-1]='\0';
 
 			if (strcmp(cmd,"echo")==0){
-				printf("%s",cmd+strlen(token)+1);
-			}
-
-			else if (strcmp(cmd,"pwd")==0){
-				printf("%s\n",curdir);
+				implement_echo(cmd+strlen(token)+1);
 			}
 
 			else if ((strcmp(cmd,"cd"))==0){
@@ -136,20 +134,10 @@ int main(int argc,char* argv[],char* envp[]){
 				pid=fork();
 				if (pid==0){
 					//Child Process
-					int tmp=0;
-					while(token!=NULL){
-						a[tmp]=(char *)malloc(strlen(token)*sizeof(char));
-						strcpy(a[tmp++],token);
-						token=(char *)strtok(NULL," \n");
-					}
-					a[tmp]=NULL;
-					int err=execvp(a[0],a);
-					if (err==-1 && errno==2 )fprintf(stderr,"%s: command not found\n",a[0]);
-					_exit(0);
+					implement_command(a,token);
 				}
 				else{
 					//Parent Process
-					
 					storeproc(pid,cache);
 					if (bgflag==0)
 						waitpid(pid,&mysignal,0);	

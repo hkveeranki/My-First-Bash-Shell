@@ -11,3 +11,4 @@ I used execvp function of exec family to execute commands
 Run make to obtain an executable and make clean to remove it 
 
 Logic behind the code is explained in comments
+ If you press ctrl+c then whole shell exits 

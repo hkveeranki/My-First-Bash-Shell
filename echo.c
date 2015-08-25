@@ -19,33 +19,35 @@
 
 void implement_echo(char *input){
 	int i;
-	int fl = 0;
-	input[strlen(input)-1]='\0'; //Removing the terminating newline character
+	int fl = 0,fl2=0;
 
 	if (input[0]=='$'){
-	printf("%s\n",getenv(input+1));
-	return ;
+		printf("%s\n",getenv(input+1));
+		return ;
 	}
+	input[strlen(input)-1]='\0'; //Removing the terminating newline character
 	do{
 		for(i=0;input[i]!='\0';i++){
-			if(input[i]=='\\'&&!isalpha(input[i+1])){      //checking if escaping has been assked
+			if(input[i]=='\\'){      //checking if escaping has been assked
 				i++;
 				putchar(input[i]);
 			}
-			else if(input[i]!='\"'&&input[i]!='\'')                  //Managing double quotes
+			else if((input[i]!='\"'||fl2==1)&&(input[i]!='\''||fl==1))			//Managing double quotes
 				putchar(input[i]);
-			else if(fl==0)
-				fl = 1;
-			else
-				fl = 0;
+			else if(input[i]=='\"')
+				if(fl==0) fl = 1;
+				else fl = 0;
+			else 
+				if(fl2 == 0) fl2 = 1;
+				else  fl2 = 0;
 		}
-		puts("\n");
+		putchar('\n');
 		if(fl == 1){                                 //Asking for more input if quotes are not balanced
-			puts(">");
-			input = (char *)malloc(MAX_LENGTH*sizeof(char));
+			putchar('>');
 			fgets(input,MAX_LENGTH,stdin);
-			input[strlen(input)-1]='\0';
+			input[strlen(input)-1]='\0'; //Same as done above
+
 		}
 	}while(fl == 1); 
-
+	return ;
 }

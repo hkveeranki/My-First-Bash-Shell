@@ -9,9 +9,7 @@
 #include <sys/wait.h>
 #include <pwd.h>
 #include <signal.h>
-#include <proccache.h>
 #include <cd.h>
-#include <implement.h>
 #include <echo.h>
 
 #ifdef _WIN32
@@ -33,16 +31,6 @@ char *usrname,*token,*homedir,*hostname,*a[102],*mypath,*origin;
 char delim[2]=" ";
 char cmd[MAX_LENGTH],cmd_given[MAX_LENGTH],curdir[MAX_LENGTH];
 
-void handle_signal(int signo){
-
-	//To handle ctrl+c signal
-
-	printf("\n%s @ %s: ",usrname,hostname);
-	if ( strlen(homedir)>strlen(curdir)) printf("%s $ ",curdir);
-	else  printf("~%s $ ",curdir+strlen(homedir));
-	fflush(stdout);
-
-}
 
 int main(int argc,char* argv[],char* envp[]){
 
@@ -68,10 +56,6 @@ int main(int argc,char* argv[],char* envp[]){
 
 	usrname=getenv("USER");
 	gethostname(hostname,MAX_LENGTH);
-
-	//handling ctrl+c signal
-	signal(SIGINT, SIG_IGN);
-	signal(SIGINT, handle_signal);
 
 	while(1){
 
@@ -101,7 +85,11 @@ int main(int argc,char* argv[],char* envp[]){
 
 		//Taking input and checking EOF condition
 
-		if(!fgets(cmd_given,MAX_LENGTH,stdin))break;
+		if(!fgets(cmd_given,MAX_LENGTH,stdin)){
+			//Quitting
+			puts("exit");
+			_exit(0);
+		}
 		if(strcmp(cmd_given,"\n")==0)continue;//Only enter is pressed
 		index=0;
 
@@ -122,12 +110,6 @@ int main(int argc,char* argv[],char* envp[]){
 
 			cmd_len=strlen(cmd);
 
-			//Background
-
-			if (cmd[cmd_len-2]=='&'){
-				bgflag=1;
-				cmd[cmd_len-2]='\0';
-			}
 
 			//Tokenising
 			token= (char *)strtok(cmd,delim);
@@ -149,24 +131,63 @@ int main(int argc,char* argv[],char* envp[]){
 				printf("%s\n",curdir);
 			}
 			else if (strcmp(cmd,"exit")==0 ){
-				return 0;
+				//Quitting
+				_exit(0);
 			}
 			else{
 				pid=fork();
 				if (pid==0){
 					//Child Process
-					implement_command(a,token);
+					int tmp=0;
+					//Storing the arguments given in an array of strings 
+					while(token!=NULL){
+						a[tmp]=(char *)malloc(strlen(token)*sizeof(char));
+						strcpy(a[tmp++],token);
+						//tokenising
+						token=(char *)strtok(NULL," \n");
+					}
+					//indicating end of command
+					if (strcmp(a[0],"ls")==0){
+						a[tmp]=(char *)malloc(20*sizeof(char));
+						strcpy(a[tmp++],"--color=auto");
+					}
+
+					a[tmp]=NULL;
+					//calling execvp
+					int i,err=execvp(a[0],a);
+					//checking error cases
+
+					if (err==-1 && errno==2 )fprintf(stderr,"%s: command not found\n",a[0]);
+					for (i=0;i<tmp;i++)free(a[i]);
+					_exit(0);
 				}
+
 				else{
+					//Background
+
+					if (cmd[cmd_len-2]=='&'){
+						bgflag=1;
+						cmd[cmd_len-2]='\0';
+					}
 					//Parent Process
-					storeproc(pid,cache);
+					int i=0;
+					char c;
+					//Opening file in proc folder
+					sprintf(tmp1,"/proc/%d/cmdline",pid);
+
+					FILE *filep=fopen(tmp1,"r");
+					//giving it a sleep to get correct buffer pid
+					usleep(10000);
+					//storing name into cacahe
+					while((c=fgetc(filep))!=EOF){
+						tmp2[i++]=c;
+					}
+					strcpy(cache[pid],tmp2);
 					if (bgflag==0)
 						waitpid(pid,&mysignal,0);	
 				}
 			}
 		}
 	}
-	//Quitting
-	printf("exit\n");
 	return 0;
 }

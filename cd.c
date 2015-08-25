@@ -30,9 +30,11 @@ void implement_cd(char *path,char *home,char *exe,char *cmd,char *origin){
 	//we store path we have travelled so far in mypath so as to print in case of error 
 
 	token=strtok(path,"/");
+	int cnt=0,err;
 	while(token!=NULL){
 		strcat(mypath,token);
-		int err=chdir(token);
+		if (cnt==0 && strcmp(token,"~")==0) err=chdir(home);
+		else err=chdir(token);
 		if (err==-1){
 			//exe has the name of executable .. cmd is the name of command 
 			//strerror is used to get error message for a particular errorno 

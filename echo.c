@@ -20,14 +20,19 @@
 void implement_echo(char *input){
 	int i;
 	int fl = 0;
-	input[strlen(input)-1]='\0';    //Removing the terminating newline character
+	input[strlen(input)-1]='\0'; //Removing the terminating newline character
+
+	if (input[0]=='$'){
+	printf("%s\n",getenv(input+1));
+	return ;
+	}
 	do{
 		for(i=0;input[i]!='\0';i++){
 			if(input[i]=='\\'&&!isalpha(input[i+1])){      //checking if escaping has been assked
 				i++;
 				putchar(input[i]);
 			}
-			else if(input[i]!='\"')                  //Managing double quotes
+			else if(input[i]!='\"'&&input[i]!='\'')                  //Managing double quotes
 				putchar(input[i]);
 			else if(fl==0)
 				fl = 1;

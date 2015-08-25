@@ -34,10 +34,14 @@ char delim[2]=" ";
 char cmd[MAX_LENGTH],cmd_given[MAX_LENGTH],curdir[MAX_LENGTH];
 
 void handle_signal(int signo){
+
+	//To handle ctrl+c signal
+
 	printf("\n%s @ %s: ",usrname,hostname);
 	if ( strlen(homedir)>strlen(curdir)) printf("%s $ ",curdir);
 	else  printf("~%s $ ",curdir+strlen(homedir));
 	fflush(stdout);
+
 }
 
 int main(int argc,char* argv[],char* envp[]){
@@ -50,35 +54,44 @@ int main(int argc,char* argv[],char* envp[]){
 
 	/* Doing Malloc */
 
-	origin=(char *)malloc(MAX_LENGTH*sizeof(char));
+	origin=(char *)malloc(MAX_LENGTH*sizeof(char)); 
 	mypath=(char *)malloc(MAX_LENGTH*sizeof(char));
-	usrname=(char*)malloc(MAX_LENGTH*sizeof(char));
-	token=(char*)malloc(MAX_LENGTH*sizeof(char));
-	homedir=(char*)malloc(MAX_LENGTH*sizeof(char));
-	hostname=(char *)malloc(MAX_LENGTH*sizeof(char));
+	usrname=(char*)malloc(MAX_LENGTH*sizeof(char));//To store the user name 
+	token=(char*)malloc(MAX_LENGTH*sizeof(char)); //To store the tokens
+	homedir=(char*)malloc(MAX_LENGTH*sizeof(char));//To store homedirectory
+	hostname=(char *)malloc(MAX_LENGTH*sizeof(char));//To store the hostname
 
 	/* Gettting env variable */
 
+	//To get home directory
 	getcwd(homedir,MAX_LENGTH);
 
 	usrname=getenv("USER");
 	gethostname(hostname,MAX_LENGTH);
 
+	//handling ctrl+c signal
 	signal(SIGINT, SIG_IGN);
 	signal(SIGINT, handle_signal);
 
 	while(1){
 
+		//handling background not yet converted
+
 		bgflag=0;
+		//getting current working directory to display prompt
+
 		getcwd(curdir,MAX_LENGTH);
+		//Initialisation
 		bzero(cmd,MAX_LENGTH);
 
+		//Vague implementation of '&' 
 		while( (pid=waitpid(-1,&mysignal,WNOHANG))>0){
 			printf("Process %s with PID :",cache[pid]);
 			printf(" %d ",pid);
 			puts("Exitted\n");
 		}
 
+		//Printing Prompt 
 
 		printf("%s @ %s: ",usrname,hostname);
 
@@ -86,14 +99,16 @@ int main(int argc,char* argv[],char* envp[]){
 
 		else  printf("~%s $ ",curdir+strlen(homedir));
 
+		//Taking input and checking EOF condition
 
 		if(!fgets(cmd_given,MAX_LENGTH,stdin))break;
-
+		if(strcmp(cmd_given,"\n")==0)continue;//Only enter is pressed
 		index=0;
 
 		while(cmd_given[index]!='\0'){
 
 			i=0;
+			//Splitting command with respect to ;
 
 			while(cmd_given[index]!=';' && cmd_given[index]!='\n') {
 				cmd[i]=cmd_given[index];
@@ -107,11 +122,14 @@ int main(int argc,char* argv[],char* envp[]){
 
 			cmd_len=strlen(cmd);
 
+			//Background
+
 			if (cmd[cmd_len-2]=='&'){
 				bgflag=1;
 				cmd[cmd_len-2]='\0';
 			}
 
+			//Tokenising
 			token= (char *)strtok(cmd,delim);
 
 			if (token[strlen(token)-1]=='\n')
@@ -126,6 +144,9 @@ int main(int argc,char* argv[],char* envp[]){
 				if(token!=NULL)
 					implement_cd(token,homedir,argv[0],cmd,curdir);
 				else chdir(homedir);
+			}
+			else if (strcmp(cmd,"pwd")==0){
+				printf("%s\n",curdir);
 			}
 			else if (strcmp(cmd,"exit")==0 ){
 				return 0;
@@ -145,6 +166,7 @@ int main(int argc,char* argv[],char* envp[]){
 			}
 		}
 	}
+	//Quitting
 	printf("exit\n");
 	return 0;
 }

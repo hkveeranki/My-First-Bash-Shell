@@ -19,13 +19,24 @@
 
 void implement_command(char *a[101],char *token){
 	int tmp=0;
+	//Storing the arguments given in an array of strings 
 	while(token!=NULL){
 		a[tmp]=(char *)malloc(strlen(token)*sizeof(char));
 		strcpy(a[tmp++],token);
+		//tokenising
 		token=(char *)strtok(NULL," \n");
 	}
-	a[tmp]=NULL;
+	//indicating end of command
+	if (strcmp(a[0],"ls")==0){
+		a[tmp]=(char *)malloc(20*sizeof(char));
+		strcpy(a[tmp++],"--color=auto");
+	}
+
+	a[++tmp]=NULL;
+	//calling execvp
 	int err=execvp(a[0],a);
+
+	//checking error cases
+	
 	if (err==-1 && errno==2 )fprintf(stderr,"%s: command not found\n",a[0]);
 }
-

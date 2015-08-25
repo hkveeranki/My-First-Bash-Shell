@@ -20,10 +20,10 @@
 void implement_echo(char *input){
 	int i;
 	int fl = 0;
-	input[strlen(input)-1]='\0';    //Removing the last newline character
+	input[strlen(input)-1]='\0';    //Removing the terminating newline character
 	do{
 		for(i=0;input[i]!='\0';i++){
-			if(input[i]=='\\'&&!isalpha(input[i+1])){      //checking if a character has to be escaped
+			if(input[i]=='\\'&&!isalpha(input[i+1])){      //checking if escaping has been assked
 				i++;
 				putchar(input[i]);
 			}

@@ -17,14 +17,19 @@
 #define MAX_LENGTH 1024
 #define DELIMS " \t\r\n"
 void storeproc(int pid, char cache[][20]){
-	char tmp1[1024]={'\0'},tmp2[1024]={'\0'};
+	//Temporary variables 	
+	char *tmp1=(char*)malloc(MAX_LENGTH*sizeof(char));
+	char *tmp2=(char*)malloc(MAX_LENGTH*sizeof(char));
 	int i=0;
 	char c;
-	//printf("PID : %d\n",pid);
+	//Opening file in proc folder
 	sprintf(tmp1,"/proc/%d/cmdline",pid);
+	
 	FILE *filep=fopen(tmp1,"r");
-	long long int lag=1000000;
+	//giving it a sleep to get correct buffer pid
+	int lag=10000000;
 	while(lag--);
+	//storing name into cacahe
 	while((c=fgetc(filep))!=EOF){
 		tmp2[i++]=c;
 	}

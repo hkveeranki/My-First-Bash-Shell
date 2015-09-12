@@ -34,7 +34,7 @@ int main(int argc,char* argv[],char* envp[]){
 	int bgflag=0,index,i,mysignal,cmd_len,c;
 	pid_t pid;
 	char tmp1[100],tmp2[100];
-	int in,out;
+	int in,out,out2;
 	/* Doing Malloc */
 
 	origin=(char *)malloc(MAX_LENGTH*sizeof(char)); 
@@ -111,7 +111,7 @@ int main(int argc,char* argv[],char* envp[]){
 
 
 			//Tokenising
-			
+
 			token= (char *)strtok(cmd,delim);
 
 			if (token[strlen(token)-1]=='\n')
@@ -141,7 +141,7 @@ int main(int argc,char* argv[],char* envp[]){
 				}
 				pid=fork();
 				if (pid==0){
-					in=out=0;
+					in=out=out2=0;
 					//Child Process
 					int tmp=0;
 					//Storing the arguments given in an array of strings 
@@ -150,8 +150,17 @@ int main(int argc,char* argv[],char* envp[]){
 						if (strcmp(token,"<")==0){
 							in=1;
 						}
-						else if (in!=1 && out!=1 && strcmp(token,">")==0){
+						else if (in==1 && (strcmp(token,"<")==0 || strcmp(token,">")==0||strcmp(token,">>")==0)){
+							printf("syntax near unexpected token \'<\'\n");
+						}
+						else if ((out==1 || out2==1 ) && (strcmp(">",token)==0 ||strcmp("<",token)==0||strcmp(">>",token)==0)){
+							printf("syntax near unexpected token \'>\'\n");
+						}
+						else if (in!=1 && out2!=1 && strcmp(token,">")==0){
 							out=1;
+						}
+						else if (in!=1 && out!=1 && out2!=1 && strcmp(token,">>")==0){
+							out2=1;
 						}
 						else if (in==1){
 							int fd=open(token,O_RDONLY,0);
@@ -164,6 +173,12 @@ int main(int argc,char* argv[],char* envp[]){
 							dup2(fd1,1);
 							close(fd1);
 							out=0;
+						}
+						else if (out2==1){
+						int fd2=open(token,O_RDONLY | O_WRONLY|O_APPEND);
+						dup2(fd2,1);
+						close(fd2);
+						out2=0;
 						}
 						else{
 

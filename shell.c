@@ -8,17 +8,12 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <pwd.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <cd.h>
 #include <echo.h>
 
-#ifdef _WIN32
-#include <windows.h>
-#define chdir _chdir
-
-#else
 #include <unistd.h>
-#endif
 
 #define MAX_LENGTH 1024
 #define proc_range 32768
@@ -28,9 +23,9 @@ char cache[proc_range+10][20];
 typedef void (*sighandler_t)(int);
 
 char *usrname,*token,*homedir,*hostname,*a[102],*mypath,*origin;
-char delim[2]=" ";
+char delim[4]=" \t\n";
 char cmd[MAX_LENGTH],cmd_given[MAX_LENGTH],curdir[MAX_LENGTH];
-
+pid_t shell_pid;
 
 int main(int argc,char* argv[],char* envp[]){
 
@@ -39,7 +34,7 @@ int main(int argc,char* argv[],char* envp[]){
 	int bgflag=0,index,i,mysignal,cmd_len,c;
 	pid_t pid;
 	char tmp1[100],tmp2[100];
-
+	int in,out;
 	/* Doing Malloc */
 
 	origin=(char *)malloc(MAX_LENGTH*sizeof(char)); 
@@ -48,7 +43,7 @@ int main(int argc,char* argv[],char* envp[]){
 	token=(char*)malloc(MAX_LENGTH*sizeof(char)); //To store the tokens
 	homedir=(char*)malloc(MAX_LENGTH*sizeof(char));//To store homedirectory
 	hostname=(char *)malloc(MAX_LENGTH*sizeof(char));//To store the hostname
-
+	shell_pid=getpid();
 	/* Gettting env variable */
 
 	//To get home directory
@@ -109,9 +104,14 @@ int main(int argc,char* argv[],char* envp[]){
 			cmd[i++]='\0';
 
 			cmd_len=strlen(cmd);
+			if (cmd[cmd_len-2]=='&'){
+				bgflag=1;
+				cmd[cmd_len-2]='\0';
+			}
 
 
 			//Tokenising
+			
 			token= (char *)strtok(cmd,delim);
 
 			if (token[strlen(token)-1]=='\n')
@@ -135,14 +135,41 @@ int main(int argc,char* argv[],char* envp[]){
 				_exit(0);
 			}
 			else{
+				if (cmd[strlen(cmd)-2]=='&'){
+					bgflag=1;
+					cmd[cmd_len-2]='\0';
+				}
 				pid=fork();
 				if (pid==0){
+					in=out=0;
 					//Child Process
 					int tmp=0;
 					//Storing the arguments given in an array of strings 
 					while(token!=NULL){
 						a[tmp]=(char *)malloc(strlen(token)*sizeof(char));
-						strcpy(a[tmp++],token);
+						if (strcmp(token,"<")==0){
+							in=1;
+						}
+						else if (in!=1 && out!=1 && strcmp(token,">")==0){
+							out=1;
+						}
+						else if (in==1){
+							int fd=open(token,O_RDONLY,0);
+							dup2(fd,0);
+							close(fd);
+							in=0;
+						}
+						else if (out==1){
+							int fd1=creat(token,0644);
+							dup2(fd1,1);
+							close(fd1);
+							out=0;
+						}
+						else{
+
+							strcpy(a[tmp++],token);
+
+						}
 						//tokenising
 						token=(char *)strtok(NULL," \n");
 					}
@@ -163,12 +190,7 @@ int main(int argc,char* argv[],char* envp[]){
 				}
 
 				else{
-					//Background
 
-					if (cmd[cmd_len-2]=='&'){
-						bgflag=1;
-						cmd[cmd_len-2]='\0';
-					}
 					//Parent Process
 					int i=0;
 					char c;

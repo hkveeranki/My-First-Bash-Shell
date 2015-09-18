@@ -23,7 +23,6 @@ typedef struct procinfo{
 
 char cache[1000000][20];
 
-char commandtot[MAX_LENGTH];
 pid_t pid,pid1,shellpid;
 procinfo stack[MAX_LENGTH];
 int top=-1;
@@ -42,44 +41,6 @@ void print_prompt(char* usrname,char* hostname,char* homedir){
 
 }
 
-void print_command(pid_t pid){
-/*
-	sprintf(tmp1,"/proc/%d/cmdline",pid);            //Getting the process name from from process
-	FILE *fp = fopen(tmp1,"r");
-	usleep(10000);
-	int m=0;   
-	char ch;
-	while( 1 ) {
-		ch=fgetc(fp);
-		if(ch==EOF){
-		ch=fgetc(fp);
-		if(ch==EOF)
-		break;
-		else
-			temp[m++]=' ';
-		}
-		//printf("%c",ch);
-		if(ch!='&')
-		temp[m++]=ch;
-	}
-	temp[m++]='\0';
-	printf("%s\n",temp);
-*/
-	const int BUFSIZE = 4096; // should really get PAGESIZE or something instead...
-	unsigned char buffer[BUFSIZE]; // dynamic allocation rather than stack/global would be better
-
-	sprintf(tmp1,"/proc/%d/cmdline",pid);            //Getting the process name from from process
-	int fd = open(tmp1, O_RDONLY);
-	int nbytesread = read(fd, buffer, BUFSIZE);
-	unsigned char *end = buffer + nbytesread;
-	unsigned char *p ;
-	for (p = buffer; p < end; /**/)
-	{ printf("%s ",p);
-		  while (*p++); // skip until start of next 0-terminated section
-	}
-	close(fd);
-	printf("\n");
-}
 void stop_handler(int signo){
 	if( signo == SIGTSTP )	
 		if(pid == 0)
@@ -406,35 +367,37 @@ int main(int argc,char *argv[],char *envp[]){
 				else if(strcmp(token,"jobs")==0){
 					int k,index=0;
 					for(k=0;k<=top;k++){
-						int err=kill(stack[k].pid,0);
-						if(err==-1 && errno==ESRCH);
-						else{
-							printf("[%d]\t",index+1 );
-							if(stack[k].type==BGD)
-								printf("Running\t");
-							else
-								printf("Stopped\t");
-							print_command(stack[k].pid);
-							//printf("\t\t%s\n",stack[k].name);
-							index++;
-						}
+						int err=kill(stack[top].pid,0);
+							if(errno==ESRCH);
+							else{
+								printf("[%d]\t",index+1 );
+								if(stack[k].type==BGD)
+									printf("Running\t");
+								else
+									printf("Stopped\t");
+								printf("\t\t%s\n",stack[k].name);
+								index++;
+							}
 					}
 				}
 				else{					
-					int i=strlen(cmd)+1;
-					while(cmd[i]!='\0')if (cmd[i++]=='&') bgflag=1;
 					//Handle functions other than cd,echo,pwd and exit	
+					if(cmd[cmd_len-2]=='&'){
+						bgflag=1;		
+						//Setting the backgroung flag 	
+						cmd[cmd_len-2]='\0';
+					}
 					pid = fork();//Creating a new process	
 					if(pid==0){			
 						//Child process
 						int i=0;
 						while(token!=NULL){	//Tokenizing the given command for giving it to execvp
 							a[i]=(char*)malloc(strlen(token)*sizeof(char));
-							if(strcmp(token,"&")==0);
-							else strcpy(a[i++],token);
+							strcpy(a[i],token);
 							token = strtok(NULL," \n");
+							i++;
 						}
-				
+
 						if (strcmp(a[0],"ls")==0||strcmp(a[0],"grep")==0){
 							a[i]=(char *)malloc(20*sizeof(char));
 							strcpy(a[i++],"--color=auto");

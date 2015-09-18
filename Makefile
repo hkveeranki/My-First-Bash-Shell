@@ -1,5 +1,5 @@
 
 myshell: *.c
-	gcc *.c -I includes/ -o myshell
+	gcc shell.c cd.c echo.c  -I includes/ -o myshell
 clean:
 	rm myshell

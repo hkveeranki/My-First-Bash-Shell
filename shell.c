@@ -43,28 +43,28 @@ void print_prompt(char* usrname,char* hostname,char* homedir){
 }
 
 void print_command(pid_t pid){
-/*
-	sprintf(tmp1,"/proc/%d/cmdline",pid);            //Getting the process name from from process
-	FILE *fp = fopen(tmp1,"r");
-	usleep(10000);
-	int m=0;   
-	char ch;
-	while( 1 ) {
-		ch=fgetc(fp);
-		if(ch==EOF){
-		ch=fgetc(fp);
-		if(ch==EOF)
-		break;
-		else
-			temp[m++]=' ';
-		}
-		//printf("%c",ch);
-		if(ch!='&')
-		temp[m++]=ch;
+	/*
+	   sprintf(tmp1,"/proc/%d/cmdline",pid);            //Getting the process name from from process
+	   FILE *fp = fopen(tmp1,"r");
+	   usleep(10000);
+	   int m=0;   
+	   char ch;
+	   while( 1 ) {
+	   ch=fgetc(fp);
+	   if(ch==EOF){
+	   ch=fgetc(fp);
+	   if(ch==EOF)
+	   break;
+	   else
+	   temp[m++]=' ';
+	   }
+	//printf("%c",ch);
+	if(ch!='&')
+	temp[m++]=ch;
 	}
 	temp[m++]='\0';
 	printf("%s\n",temp);
-*/
+	*/
 	const int BUFSIZE = 4096; // should really get PAGESIZE or something instead...
 	unsigned char buffer[BUFSIZE]; // dynamic allocation rather than stack/global would be better
 
@@ -74,8 +74,9 @@ void print_command(pid_t pid){
 	unsigned char *end = buffer + nbytesread;
 	unsigned char *p ;
 	for (p = buffer; p < end; /**/)
-	{ printf("%s ",p);
-		  while (*p++); // skip until start of next 0-terminated section
+	{ 
+		printf("%s ",p);
+		while (*p++); // skip until start of next 0-terminated section
 	}
 	close(fd);
 	printf("\n");
@@ -139,8 +140,21 @@ int main(int argc,char *argv[],char *envp[]){
 				j++;
 				index++;
 			}
+			if(strcmp(cmd,"\n")==0)continue;
 			char c = cmd_given[index];
 			if(c=='|'){
+				int k=index+1,errfl=1;
+				for(;cmd_given[k];k++){
+			if(cmd_given[k]!='\n' && cmd_given[k]!='\t' && cmd_given[k]!=' '){
+				errfl=0;
+				break;
+			}
+				}
+				if(errfl==1){
+					printf("%s: ",argv[0]);
+					puts("syntax error near unexpected token `|'");
+					break;
+				}
 				pipe(fd);
 
 				if((pid1=fork())==0){
@@ -177,7 +191,6 @@ int main(int argc,char *argv[],char *envp[]){
 						exit(0);
 					else if(strcmp(token,"fg") == 0){
 						pid = fork();
-
 						//needs to bring foreground so creating a child process 
 
 						if(pid!=0){
@@ -214,69 +227,70 @@ int main(int argc,char *argv[],char *envp[]){
 						//To implement functions other than shell builtins echo cd pwd like ls etc 
 
 						if(cmd[cmd_len-2]=='&'){
-							bgflag=1;		//Setting the backgroung flag 	
-							cmd[cmd_len-2]='\0';
+							printf("%s: ",argv[0]);
+							puts("syntax error near unexpected token `|'");
 						}
-						pid = fork();//Creating a new process	
-						if(pid==0){			//Child process
-							int i=0;
-							while(token!=NULL){	
+						else{
+							pid = fork();//Creating a new process	
+							if(pid==0){			//Child process
+								int i=0;
+								while(token!=NULL){	
+									a[i]=(char*)malloc(strlen(token)*sizeof(char));
+									strncpy(a[i],token,strlen(token));
+									token = strtok(NULL," \n");
+									i++;
+								}
+								if (strcmp(a[0],"ls")==0||strcmp("grep",a[0])==0){
+									a[i]=(char *)malloc(20*sizeof(char));
+									strcpy(a[i++],"--color=auto");
+								}
 
-								a[i]=(char*)malloc(strlen(token)*sizeof(char));
-								strncpy(a[i],token,strlen(token));
-								token = strtok(NULL," \n");
-								i++;
+								//indicating end of command
+
+								a[i]=NULL;
+								int err = execvp(a[0],a);		
+								if (err==-1 && errno==2 )fprintf(stderr,"%s: command not found\n",a[0]);
+								int k;
+								for (k=0;k<i;k++)free(a[k]);
+
+								_exit(0);
 							}
-							if (strcmp(a[0],"ls")==0||strcmp("grep",a[0])==0){
-								a[i]=(char *)malloc(20*sizeof(char));
-								strcpy(a[i++],"--color=auto");
-							}
+							else{	
+								if(bgflag!=0)
+									printf("[%d]\n",pid);
+								//Parent process
+								sprintf(tmp1,"/proc/%d/cmdline",pid);            //Getting the process name from from process
+								FILE *fp = fopen(tmp1,"r");
+								usleep(10000);
+								int m=0;    
+								while( ( ch = fgetc(fp) ) != EOF )  temp[m++]=ch;
+								temp[m++]='\0';
 
-							//indicating end of command
+								strcpy(cache[pid],temp);	
 
-							a[i]=NULL;
-							int err = execvp(a[0],a);		
-							if (err==-1 && errno==2 )fprintf(stderr,"%s: command not found\n",a[0]);
-							int k;
-							for (k=0;k<i;k++)free(a[k]);
-
-							_exit(0);
-						}
-						else{	
-							if(bgflag!=0)
-								printf("[%d]\n",pid);
-							//Parent process
-							sprintf(tmp1,"/proc/%d/cmdline",pid);            //Getting the process name from from process
-							FILE *fp = fopen(tmp1,"r");
-							usleep(10000);
-							int m=0;    
-							while( ( ch = fgetc(fp) ) != EOF )  temp[m++]=ch;
-							temp[m++]='\0';
-
-							strcpy(cache[pid],temp);	
-
-							if(bgflag==0){
-								while(1){
-									pid_t pid_check = waitpid(pid,&sig,WNOHANG|WUNTRACED);
-									if(pid_check == pid){
-										if(WIFSTOPPED(sig)){
-											top++;
-											stack[top].pid = pid;
-											stack[top].type = STOPPED;
-											break;
+								if(bgflag==0){
+									while(1){
+										pid_t pid_check = waitpid(pid,&sig,WNOHANG|WUNTRACED);
+										if(pid_check == pid){
+											if(WIFSTOPPED(sig)){
+												top++;
+												stack[top].pid = pid;
+												stack[top].type = STOPPED;
+												break;
+											}
+											else if(WIFEXITED(sig))
+												break;
+											else if(WIFSIGNALED(sig))
+												break;
 										}
-										else if(WIFEXITED(sig))
-											break;
-										else if(WIFSIGNALED(sig))
-											break;
 									}
 								}
-							}
-							else{
-								top++;
-								stack[top].pid=pid;
-								stack[top].type=BGD;
-								strncpy(stack[top].name,temp,strlen(temp));
+								else{
+									top++;
+									stack[top].pid=pid;
+									stack[top].type=BGD;
+									strncpy(stack[top].name,temp,strlen(temp));
+								}
 							}
 						}
 					}
@@ -434,7 +448,7 @@ int main(int argc,char *argv[],char *envp[]){
 							else strcpy(a[i++],token);
 							token = strtok(NULL," \n");
 						}
-				
+
 						if (strcmp(a[0],"ls")==0||strcmp(a[0],"grep")==0){
 							a[i]=(char *)malloc(20*sizeof(char));
 							strcpy(a[i++],"--color=auto");

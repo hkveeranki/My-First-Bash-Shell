@@ -10,6 +10,9 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <shellutil.h>
+
+
 #define MAX_LENGTH 1024
 #define BGD 1
 #define STOPPED 2
@@ -22,7 +25,6 @@ typedef struct procinfo{
 }procinfo;
 
 char cache[1000000][20];
-
 char commandtot[MAX_LENGTH];
 pid_t pid,pid1,shellpid;
 procinfo stack[MAX_LENGTH];
@@ -33,54 +35,9 @@ char *usrname,*token,*hostname,*a[102],*mypath,*origin;
 char delim[4]=" \t\n";
 char cmd[MAX_LENGTH],cmd_given[MAX_LENGTH],ch,homedir[MAX_LENGTH],curdir[MAX_LENGTH];
 char temp[MAX_LENGTH],tmp1[MAX_LENGTH];
+unsigned char buffer[4096];
 
-void print_prompt(char* usrname,char* hostname,char* homedir){
 
-	printf("%s @ %s: ",usrname,hostname);
-	if ( strlen(homedir)>strlen(curdir)) printf("%s $ ",curdir);
-	else  printf("~%s $ ",curdir+strlen(homedir));
-
-}
-
-void print_command(pid_t pid){
-	/*
-	   sprintf(tmp1,"/proc/%d/cmdline",pid);            //Getting the process name from from process
-	   FILE *fp = fopen(tmp1,"r");
-	   usleep(10000);
-	   int m=0;   
-	   char ch;
-	   while( 1 ) {
-	   ch=fgetc(fp);
-	   if(ch==EOF){
-	   ch=fgetc(fp);
-	   if(ch==EOF)
-	   break;
-	   else
-	   temp[m++]=' ';
-	   }
-	//printf("%c",ch);
-	if(ch!='&')
-	temp[m++]=ch;
-	}
-	temp[m++]='\0';
-	printf("%s\n",temp);
-	*/
-	const int BUFSIZE = 4096; // should really get PAGESIZE or something instead...
-	unsigned char buffer[BUFSIZE]; // dynamic allocation rather than stack/global would be better
-
-	sprintf(tmp1,"/proc/%d/cmdline",pid);            //Getting the process name from from process
-	int fd = open(tmp1, O_RDONLY);
-	int nbytesread = read(fd, buffer, BUFSIZE);
-	unsigned char *end = buffer + nbytesread;
-	unsigned char *p ;
-	for (p = buffer; p < end; /**/)
-	{ 
-		printf("%s ",p);
-		while (*p++); // skip until start of next 0-terminated section
-	}
-	close(fd);
-	printf("\n");
-}
 void stop_handler(int signo){
 	if( signo == SIGTSTP )	
 		if(pid == 0)
@@ -91,7 +48,9 @@ void sigint_handler(int signo){
 		if(getpid() != shellpid)
 			kill(getpid(),SIGKILL);
 }
+
 int main(int argc,char *argv[],char *envp[]){
+
 	shellpid=getpid();
 
 	origin=(char *)malloc(MAX_LENGTH*sizeof(char)); 
@@ -121,7 +80,7 @@ int main(int argc,char *argv[],char *envp[]){
 			printf("Process %s  with PID %d exited\n",cache[pid],pid);   //checking if any background processes exited
 		}
 
-		print_prompt(usrname,hostname,homedir);   //Calling prompt() in prompt.c
+		print_prompt(usrname,hostname,homedir,curdir);   //Calling prompt() in prompt.c
 
 		if(!fgets(cmd_given,MAX_LENGTH,stdin)){
 			puts("exit");
@@ -132,23 +91,39 @@ int main(int argc,char *argv[],char *envp[]){
 		int fd[2],in=0,out;
 		int stdintemp=dup(0);
 		int stdouttemp=dup(1);
-		while(cmd_given[index]!='\0'){                                                   
+		while(cmd_given[index]!='\0'){ 
 			int j=0;
-			while(cmd_given[index]!=';'&&cmd_given[index]!='\n'&&cmd_given[index]!='|'){              
+			while(cmd_given[index]!='\0' && cmd_given[index]!=';'&&cmd_given[index]!='\n'&&cmd_given[index]!='|'){              
 				//Splitting the command based on semicolons and pipes 
 				cmd[j]=cmd_given[index];                              
 				j++;
 				index++;
 			}
-			if(strcmp(cmd,"\n")==0)continue;
+			int fl=1,l;
+			for(l=0;l<j;l++){
+			if(cmd[l]!='\t' && cmd[l]!=' ' && cmd[l]!='\n'){
+				fl=0;
+				break;
+			}
+			}
+
+			if((cmd_given[index]==';'||cmd_given[index]=='|') && fl==1){
+				printf("%s: ",argv[0]);
+				printf("syntax error near unexpected token ");
+				printf("\'");
+				printf("%c",cmd_given[index]);
+				printf("\'\n");
+				break;
+			}
+			else if (strcmp(cmd,"\n")==0)continue;
 			char c = cmd_given[index];
 			if(c=='|'){
 				int k=index+1,errfl=1;
 				for(;cmd_given[k];k++){
-			if(cmd_given[k]!='\n' && cmd_given[k]!='\t' && cmd_given[k]!=' '){
-				errfl=0;
-				break;
-			}
+					if(cmd_given[k]!='\n' && cmd_given[k]!='\t' && cmd_given[k]!=' '){
+						errfl=0;
+						break;
+					}
 				}
 				if(errfl==1){
 					printf("%s: ",argv[0]);
@@ -191,6 +166,7 @@ int main(int argc,char *argv[],char *envp[]){
 						exit(0);
 					else if(strcmp(token,"fg") == 0){
 						pid = fork();
+					
 						//needs to bring foreground so creating a child process 
 
 						if(pid!=0){
@@ -219,9 +195,20 @@ int main(int argc,char *argv[],char *envp[]){
 					else if(strcmp(token,"bg")==0)
 						kill(stack[top--].pid,SIGCONT);
 					else if(strcmp(token,"jobs")==0){
-
-						//Have to implement it 
-
+						int k,index=0;
+						for(k=0;k<=top;k++){
+							int err=kill(stack[k].pid,0);
+							if(err==-1 && errno==ESRCH);
+							else{
+								printf("[%d]\t",index+1 );
+								if(stack[k].type==BGD)
+									printf("Running\t");
+								else
+									printf("Stopped\t");
+								print_command(stack[k].pid,tmp1,buffer);
+								index++;
+							}
+						}
 					}
 					else{		
 						//To implement functions other than shell builtins echo cd pwd like ls etc 
@@ -259,7 +246,8 @@ int main(int argc,char *argv[],char *envp[]){
 								if(bgflag!=0)
 									printf("[%d]\n",pid);
 								//Parent process
-								sprintf(tmp1,"/proc/%d/cmdline",pid);            //Getting the process name from from process
+								sprintf(tmp1,"/proc/%d/cmdline",pid);            
+								//Getting the process name from from process
 								FILE *fp = fopen(tmp1,"r");
 								usleep(10000);
 								int m=0;    
@@ -428,8 +416,7 @@ int main(int argc,char *argv[],char *envp[]){
 								printf("Running\t");
 							else
 								printf("Stopped\t");
-							print_command(stack[k].pid);
-							//printf("\t\t%s\n",stack[k].name);
+							print_command(stack[k].pid,tmp1,buffer);
 							index++;
 						}
 					}
@@ -448,7 +435,7 @@ int main(int argc,char *argv[],char *envp[]){
 							else strcpy(a[i++],token);
 							token = strtok(NULL," \n");
 						}
-
+						int j=0;
 						if (strcmp(a[0],"ls")==0||strcmp(a[0],"grep")==0){
 							a[i]=(char *)malloc(20*sizeof(char));
 							strcpy(a[i++],"--color=auto");
@@ -458,8 +445,8 @@ int main(int argc,char *argv[],char *envp[]){
 						int err = execvp(a[0],a);		//Execute the command
 						if (err==-1 && errno==2 )fprintf(stderr,"%s: command not found\n",a[0]);
 						int k;
-						for (k=0;k<i;k++)free(a[k]);
 
+						for (k=0;k<i;k++)free(a[k]);
 						_exit(0);
 					}
 
@@ -467,7 +454,10 @@ int main(int argc,char *argv[],char *envp[]){
 						if(bgflag!=0)
 							printf("[%d]\n",pid);
 						//Parent process
-						sprintf(tmp1,"/proc/%d/cmdline",pid);		//Getting the process name from from process
+
+						sprintf(tmp1,"/proc/%d/cmdline",pid);
+
+						//Getting the process name from from process
 						FILE *fp = fopen(tmp1,"r");
 						usleep(10000);
 						int m=0;		

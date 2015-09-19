@@ -38,3 +38,16 @@ void print_command(pid_t pid,char tmp1[],unsigned char buffer[]){
 	close(fd);
 	printf("\n");
 }
+
+void cache_store(char temp[],pid_t pid,char cache[32778][20]){
+	char ch;
+	char *tmp1=(char *)malloc(1024*(sizeof(char)));
+	sprintf(tmp1,"/proc/%d/cmdline",pid);
+	FILE *fp = fopen(tmp1,"r");
+	usleep(10000);
+	int m=0;          
+	while( ( ch = fgetc(fp) ) != EOF )  temp[m++]=ch;
+	temp[m++]='\0';
+	strcpy(cache[pid],temp);
+	free(tmp1);
+}

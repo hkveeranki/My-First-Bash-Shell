@@ -1,35 +1,46 @@
+/* Author: Hemanth Kumar Veeranki */
+/* Nick: Harry7 */
+
+/* Standard Header Files */
+
 #include <stdio.h>
 #include <pwd.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
-#include <cd.h>
-#include <echo.h>
 #include <errno.h>
 #include <signal.h>
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+
+
+/* My Header files */
+
+#include <cd.h>
+#include <echo.h>
 #include <shellutil.h>
 
+/* Defining Variables */
 
 #define MAX_LENGTH 1024
 #define BGD 1
 #define STOPPED 2
 #define proc_range 32768
 
+/* Variable classes and global Variables */ 
+
 typedef struct procinfo{
 	pid_t pid;
 	int type;
-	char name[MAX_LENGTH];
 }procinfo;
 
-char cache[1000000][20];
+char cache[proc_range+10][20];
 char commandtot[MAX_LENGTH];
 pid_t pid,pid1,shellpid;
-procinfo stack[MAX_LENGTH];
-int top=-1;
 
+procinfo stack[proc_range+10];
+int top=-1; // stack head 
 
 char *usrname,*token,*hostname,*a[102],*mypath,*origin;
 char delim[4]=" \t\n";
@@ -37,17 +48,21 @@ char cmd[MAX_LENGTH],cmd_given[MAX_LENGTH],ch,homedir[MAX_LENGTH],curdir[MAX_LEN
 char temp[MAX_LENGTH],tmp1[MAX_LENGTH];
 unsigned char buffer[4096];
 
+/* Functions */
 
 void stop_handler(int signo){
 	if( signo == SIGTSTP )	
 		if(pid == 0)
 			kill(getpid(),SIGSTOP);
 }
+
 void sigint_handler(int signo){
 	if( signo == SIGINT )	
 		if(getpid() != shellpid)
 			kill(getpid(),SIGKILL);
 }
+
+/* Main code */
 
 int main(int argc,char *argv[],char *envp[]){
 
@@ -72,9 +87,8 @@ int main(int argc,char *argv[],char *envp[]){
 	while(1){
 		int bgflag = 0,i;
 
-		bzero(cmd,MAX_LENGTH);
+		bzero(cmd_given,MAX_LENGTH);
 
-		getcwd(curdir,MAX_LENGTH);
 
 		while((pid=waitpid(-1,&sig,WNOHANG|WUNTRACED))>0) {
 			printf("Process %s  with PID %d exited\n",cache[pid],pid);   //checking if any background processes exited
@@ -91,22 +105,23 @@ int main(int argc,char *argv[],char *envp[]){
 		int fd[2],in=0,out;
 		int stdintemp=dup(0);
 		int stdouttemp=dup(1);
+		int pipefl=0;
 		while(cmd_given[index]!='\0'){ 
 			int j=0;
-			while(cmd_given[index]!='\0' && cmd_given[index]!=';'&&cmd_given[index]!='\n'&&cmd_given[index]!='|'){              
-				//Splitting the command based on semicolons and pipes 
+			bzero(cmd,MAX_LENGTH);
+			getcwd(curdir,MAX_LENGTH);
+			while(cmd_given[index]!='\0' && cmd_given[index]!=';'&&cmd_given[index]!='\n'&&cmd_given[index]!='|'){
 				cmd[j]=cmd_given[index];                              
 				j++;
 				index++;
 			}
 			int fl=1,l;
 			for(l=0;l<j;l++){
-			if(cmd[l]!='\t' && cmd[l]!=' ' && cmd[l]!='\n'){
-				fl=0;
-				break;
+				if(cmd[l]!='\t' && cmd[l]!=' ' && cmd[l]!='\n'){
+					fl=0;
+					break;
+				}
 			}
-			}
-
 			if((cmd_given[index]==';'||cmd_given[index]=='|') && fl==1){
 				printf("%s: ",argv[0]);
 				printf("syntax error near unexpected token ");
@@ -116,20 +131,14 @@ int main(int argc,char *argv[],char *envp[]){
 				break;
 			}
 			else if (strcmp(cmd,"\n")==0)continue;
+			else if (fl==1 || j==0){
+				if(pipefl==1)
+					puts("Wrong syntax");
+				break;
+			}
 			char c = cmd_given[index];
 			if(c=='|'){
-				int k=index+1,errfl=1;
-				for(;cmd_given[k];k++){
-					if(cmd_given[k]!='\n' && cmd_given[k]!='\t' && cmd_given[k]!=' '){
-						errfl=0;
-						break;
-					}
-				}
-				if(errfl==1){
-					printf("%s: ",argv[0]);
-					puts("syntax error near unexpected token `|'");
-					break;
-				}
+				pipefl=1;
 				pipe(fd);
 
 				if((pid1=fork())==0){
@@ -166,7 +175,7 @@ int main(int argc,char *argv[],char *envp[]){
 						exit(0);
 					else if(strcmp(token,"fg") == 0){
 						pid = fork();
-					
+
 						//needs to bring foreground so creating a child process 
 
 						if(pid!=0){
@@ -246,16 +255,7 @@ int main(int argc,char *argv[],char *envp[]){
 								if(bgflag!=0)
 									printf("[%d]\n",pid);
 								//Parent process
-								sprintf(tmp1,"/proc/%d/cmdline",pid);            
-								//Getting the process name from from process
-								FILE *fp = fopen(tmp1,"r");
-								usleep(10000);
-								int m=0;    
-								while( ( ch = fgetc(fp) ) != EOF )  temp[m++]=ch;
-								temp[m++]='\0';
-
-								strcpy(cache[pid],temp);	
-
+								cache_store(temp,pid,cache);
 								if(bgflag==0){
 									while(1){
 										pid_t pid_check = waitpid(pid,&sig,WNOHANG|WUNTRACED);
@@ -277,7 +277,6 @@ int main(int argc,char *argv[],char *envp[]){
 									top++;
 									stack[top].pid=pid;
 									stack[top].type=BGD;
-									strncpy(stack[top].name,temp,strlen(temp));
 								}
 							}
 						}
@@ -293,6 +292,7 @@ int main(int argc,char *argv[],char *envp[]){
 
 			}
 			else{
+				pipefl=0;
 				if(in!=0){
 					dup2(in,0);
 					close(in);
@@ -357,7 +357,7 @@ int main(int argc,char *argv[],char *envp[]){
 					token[strlen(token)-1] = '\0';
 				if(strcmp(token,"echo")==0)            
 					implement_echo(cmd+strlen(token)+1);
-				else if(strcmp(token,"pwd")==0)         //print the current working directory
+				else if(strcmp(token,"pwd")==0)         
 					printf("%s\n",curdir);
 				else if(strcmp(token,"cd")==0){         
 					cmd[cmd_len-1]='\0';
@@ -453,17 +453,7 @@ int main(int argc,char *argv[],char *envp[]){
 					else{	
 						if(bgflag!=0)
 							printf("[%d]\n",pid);
-						//Parent process
-
-						sprintf(tmp1,"/proc/%d/cmdline",pid);
-
-						//Getting the process name from from process
-						FILE *fp = fopen(tmp1,"r");
-						usleep(10000);
-						int m=0;		
-						while( ( ch = fgetc(fp) ) != EOF )  temp[m++]=ch;
-						temp[m++]='\0';
-						strcpy(cache[pid],temp);
+						cache_store(temp,pid,cache);
 						if(bgflag==0){
 							while(1){
 								pid_t pid_check = waitpid(pid,&sig,WNOHANG|WUNTRACED);
@@ -471,8 +461,8 @@ int main(int argc,char *argv[],char *envp[]){
 									if(WIFSTOPPED(sig)){
 										top++;
 										stack[top].pid = pid;
+
 										stack[top].type = STOPPED;
-										strncpy(stack[top].name,temp,strlen(temp));
 										break;
 									}
 									else if(WIFEXITED(sig))
@@ -486,7 +476,6 @@ int main(int argc,char *argv[],char *envp[]){
 							top++;
 							stack[top].pid=pid;
 							stack[top].type=BGD;
-							strncpy(stack[top].name,temp,strlen(temp));
 						}
 					}
 				}

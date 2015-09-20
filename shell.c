@@ -142,12 +142,13 @@ int main(int argc,char *argv[],char *envp[]){
 				pipe(fd);
 
 				if((pid1=fork())==0){
-
+					
 					if(in!=0){
 						//not stdin
 						dup2(in,0);
 						close(in);
 					}
+
 					if(fd[1]!=1){
 						//not stdout 
 						dup2(fd[1],1);
@@ -174,12 +175,15 @@ int main(int argc,char *argv[],char *envp[]){
 					else if(strcmp(token,"exit")==0||strcmp("quit",token)==0)        
 						exit(0);
 					else if(strcmp(token,"fg") == 0){
+						
 						pid = fork();
 
 						//needs to bring foreground so creating a child process 
 
 						if(pid!=0){
 							pid_t p = stack[top].pid;
+							int err=kill(p,0);
+							if(err==-1 && errno==ESRCH)_exit(0);
 							kill(p,SIGCONT);
 							top--;
 							while(1){
@@ -229,12 +233,22 @@ int main(int argc,char *argv[],char *envp[]){
 						else{
 							pid = fork();//Creating a new process	
 							if(pid==0){			//Child process
-								int i=0;
+								int i=0i,infl=0;
+								int intemp=dup(0);
 								while(token!=NULL){	
 									a[i]=(char*)malloc(strlen(token)*sizeof(char));
+									if(strcmp(token,"<")==0)infl=1;
+									else if(infl==1){
+									int fd0=open(token,O_RDONLY);
+									dup2(fd0,0);
+									close(fd0);
+									infl=0;
+									}
+									else{
 									strncpy(a[i],token,strlen(token));
-									token = strtok(NULL," \n");
 									i++;
+									}
+									token = strtok(NULL,delim);
 								}
 								if (strcmp(a[0],"ls")==0||strcmp("grep",a[0])==0){
 									a[i]=(char *)malloc(20*sizeof(char));
@@ -248,7 +262,7 @@ int main(int argc,char *argv[],char *envp[]){
 								if (err==-1 && errno==2 )fprintf(stderr,"%s: command not found\n",a[0]);
 								int k;
 								for (k=0;k<i;k++)free(a[k]);
-
+								dup2(intemp,0);
 								_exit(0);
 							}
 							else{	
@@ -485,6 +499,7 @@ int main(int argc,char *argv[],char *envp[]){
 				close(stdintemp);
 				close(stdouttemp);
 			}
+			if (top<-1)top=-1;
 		}
 	}
 	return 0;

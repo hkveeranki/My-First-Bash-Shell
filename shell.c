@@ -50,16 +50,256 @@ unsigned char buffer[4096];
 
 /* Functions */
 
+/* Handles the SIGSTP signal */
+
 void stop_handler(int signo){
 	if( signo == SIGTSTP )	
 		if(pid == 0)
 			kill(getpid(),SIGSTOP);
 }
 
+/* Handles the SIGINT signal */
+
 void sigint_handler(int signo){
 	if( signo == SIGINT )	
 		if(getpid() != shellpid)
 			kill(getpid(),SIGKILL);
+}
+
+/* Executes the given command */
+
+void my_execute(int in,int out,int *sig,int *bgflag,char* shellname,int pipefl){
+	int l,instate=0,outstate=0;
+	char curstdin[MAX_LENGTH],curstdout[MAX_LENGTH];
+	for(l=0;cmd[l]!='\n'&&l<strlen(cmd);l++){
+		if(cmd[l]=='>'){
+			if (cmd[l+1]=='>'){
+				outstate=2;
+				cmd[l]=' ';
+				l++;
+			}
+			else outstate = 1;
+			cmd[l]=' ';
+			l++;
+			while(cmd[l]==' ')l++;
+			int f=0;
+			for(;cmd[l]!=' '&&cmd[l]!='<'&&cmd[l]!='\n';l++){
+				curstdout[f++]=cmd[l];
+				cmd[l]=' ';
+			}
+			curstdout[f]='\0';
+		}
+		if(cmd[l]=='<'){
+			instate = 1;
+			cmd[l]=' ';
+			l++;
+			while(cmd[l]==' ')l++;
+			int f=0;
+			for(;cmd[l]!=' '&&cmd[l]!='>'&&cmd[l]!='\n';l++){
+				curstdin[f++]=cmd[l];
+				cmd[l]=' ';
+			}
+			if(cmd[l]=='>') l--;
+			curstdin[f]='\0';
+		}
+	}
+
+	if(curstdin[strlen(curstdin)-1]=='\n')
+		curstdin[strlen(curstdin)-1]='\0';
+	if(curstdout[strlen(curstdout)-1]=='\n')
+		curstdout[strlen(curstdout)-1]='\0';
+	if(instate==1){
+		in = open(curstdin, O_RDONLY);
+		dup2(in,0);
+	}
+	if(outstate==1){
+		out = open(curstdout,O_WRONLY | O_TRUNC | O_CREAT, S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);
+		dup2(out,1);
+	}
+	else if (outstate==2){
+		out = open(curstdout,O_WRONLY | O_CREAT|O_APPEND, S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);
+		dup2(out,1);
+	}
+	int cmd_len = strlen(cmd);      
+	token = (char *)strtok(cmd,delim);
+	if(token[strlen(token)-1] == '\n')
+		token[strlen(token)-1] = '\0';
+	if(strcmp(token,"echo")==0)            
+		implement_echo(cmd+strlen(token)+1);
+	else if(strcmp(token,"pwd")==0)         
+		printf("%s\n",curdir);
+	else if(strcmp(token,"cd")==0){         
+		cmd[cmd_len-1]='\0';
+		token = strtok(NULL,delim);
+		if(token==NULL)chdir(homedir);
+		else implement_cd(token,homedir,shellname,cmd,curdir);
+	}
+	else if(strcmp(token,"quit")==0||strcmp(token,"exit")==0)        
+		exit(0);
+	else if(strcmp(token,"fg") == 0){
+		pid = fork();
+
+		if(pid!=0){
+			pid_t p = stack[top].pid;
+			token = strtok(NULL,"\n ");
+			int num = 0,k;
+			if(token!=NULL){
+				for(k=0;token[k]!='\0';k++){
+					num = num*10 + token[k]-'0';
+				}
+				num--;
+				p=stack[num].pid;
+			}
+			if(num > top){
+				printf("Sorry no such job\n");
+				return;
+			}
+			for(k=num;k<top;k++)
+				stack[k]=stack[k+1];
+			kill(p,SIGCONT);
+			top--;
+			while(1){
+				pid_t pid_check = waitpid(p,sig,WNOHANG|WUNTRACED);
+				if(pid_check == p){
+					if(WIFSTOPPED(*sig)){
+						top++;
+						stack[top].pid = pid_check;
+						stack[top].type = STOPPED;
+						break;
+					}
+					else if(WIFEXITED(*sig))
+						break;
+					else if(WIFSIGNALED(*sig))
+						break;
+				}
+			}
+		}
+		else
+			_exit(0);
+	}
+	else if(strcmp(token,"bg")==0){
+		kill(stack[top].pid,SIGCONT);
+		stack[top].type = BGD;
+	}
+	else if(strcmp(token,"jobs")==0){
+		int k,index=0;
+		for(k=0;k<=top;k++){
+			int err=kill(stack[k].pid,0);
+			if(err==-1 && errno==ESRCH);
+			else{
+				printf("[%d]\t",index+1 );
+				if(stack[k].type==BGD)
+					printf("Running\t");
+				else
+					printf("Stopped\t");
+				print_command(stack[k].pid,tmp1,buffer);
+				index++;
+			}
+		}
+	}
+	else if(strcmp(token,"kjob")==0){
+		token = strtok(NULL," ");
+		int jobno=0,k,sign=0;
+		pid_t p;
+		if(token!=NULL){
+			for(k=0;token[k]!='\0';k++){
+				jobno = jobno*10 + token[k]-'0';
+			}
+			jobno--;
+			if(jobno > top){
+				printf("Sorry no such job exists\n");
+				return;
+			}
+			p=stack[jobno].pid;
+		}
+		else{
+			printf("Few arguments provided\n");
+			return;
+		}
+		token = strtok(NULL," ");
+		if(token!=NULL){
+			for(k=0;token[k]!='\0';k++){
+				sign = sign*10 + token[k]-'0';
+			}
+		}
+		else{
+			printf("Few arguments provided\n");
+			return;
+		}
+		kill(p,sign);
+
+	}
+	else if(strcmp(token,"overkill")==0){
+		int k;
+		for(k=0;k<=top;k++)
+			kill(stack[k].pid,9);
+		top=-1;
+	}
+	else{					
+		int i=strlen(cmd)+1;
+		while(cmd[i]!='\0')if (cmd[i++]=='&') *bgflag=1;
+		if(*bgflag==1 && pipefl==1){
+			printf("%s: ",shellname);
+			puts("syntax error near unexpected token `|\'");
+			return;
+		}
+		//Handle functions other than cd,echo,pwd and exit	
+		pid = fork();//Creating a new process	
+		if(pid==0){			
+			//Child process
+			int i=0;
+			while(token!=NULL){	//Tokenizing the given command for giving it to execvp
+				a[i]=(char*)malloc(strlen(token)*sizeof(char));
+				if(strcmp(token,"&")==0);
+				else strcpy(a[i++],token);
+				token = strtok(NULL," \n");
+			}
+			int j=0;
+			if (strcmp(a[0],"ls")==0||strcmp(a[0],"grep")==0){
+				a[i]=(char *)malloc(20*sizeof(char));
+				strcpy(a[i++],"--color=auto");
+			}
+
+			a[i]=NULL;//indicating end of command
+			int err = execvp(a[0],a);		//Execute the command
+			if (err==-1 && errno==2 )fprintf(stderr,"%s: command not found\n",a[0]);
+			int k;
+
+			for (k=0;k<i;k++)free(a[k]);
+			_exit(0);
+		}
+
+		else{	
+			if(*bgflag!=0)
+				printf("[%d]\n",pid);
+			cache_store(temp,pid,cache);
+			//printf("%s\n",temp);
+			if(*bgflag==0){
+				while(1){
+					pid_t pid_check = waitpid(pid,sig,WNOHANG|WUNTRACED);
+					if(pid_check == pid){
+						if(WIFSTOPPED(*sig)){
+							top++;
+							stack[top].pid = pid;
+
+							stack[top].type = STOPPED;
+							break;
+						}
+						else if(WIFEXITED(*sig))
+							break;
+						else if(WIFSIGNALED(*sig))
+							break;
+					}
+				}
+			}
+			else{
+				top++;
+				stack[top].pid=pid;
+				stack[top].type=BGD;
+			}
+		}
+	}
+
 }
 
 /* Main code */
@@ -89,12 +329,23 @@ int main(int argc,char *argv[],char *envp[]){
 
 		bzero(cmd_given,MAX_LENGTH);
 
-
 		while((pid=waitpid(-1,&sig,WNOHANG|WUNTRACED))>0) {
-			printf("Process %s  with PID %d exited\n",cache[pid],pid);   //checking if any background processes exited
+			int state = 0,k,l;
+			for(k=0;k<=top;k++)
+				if(stack[k].pid==pid){
+					state=1;
+					break;
+				}
+
+			if(WIFEXITED(sig) && state == 1){
+				printf("Process %s with [%d] exited\n",cache[pid],pid);
+				for(l=k;l<top;l++)
+					stack[l]=stack[l+1];
+				top--;
+			}   
 		}
 
-		print_prompt(usrname,hostname,homedir,curdir);   //Calling prompt() in prompt.c
+		print_prompt(usrname,hostname,homedir,curdir);  
 
 		if(!fgets(cmd_given,MAX_LENGTH,stdin)){
 			puts("exit");
@@ -153,189 +404,7 @@ int main(int argc,char *argv[],char *envp[]){
 						dup2(fd[1],1);
 						close(fd[1]);
 					}
-					int l,instate=0,outstate=0;
-					char curstdin[MAX_LENGTH],curstdout[MAX_LENGTH];;
-				for(l=0;cmd[l]!='\n'&&l<strlen(cmd);l++){
-					if(cmd[l]=='>'){
-						if (cmd[l+1]=='>'){
-							outstate=2;
-							cmd[l]=' ';
-							l++;
-						}
-						else outstate = 1;
-						cmd[l]=' ';
-						l++;
-						while(cmd[l]==' ')l++;
-						int f=0;
-						for(;cmd[l]!=' '&&cmd[l]!='<'&&cmd[l]!='\n';l++){
-							curstdout[f++]=cmd[l];
-							cmd[l]=' ';
-						}
-						curstdout[f]='\0';
-					}
-					if(cmd[l]=='<'){
-						instate = 1;
-						cmd[l]=' ';
-						l++;
-						while(cmd[l]==' ')l++;
-						int f=0;
-						for(;cmd[l]!=' '&&cmd[l]!='>'&&cmd[l]!='\n';l++){
-							curstdin[f++]=cmd[l];
-							cmd[l]=' ';
-						}
-						if(cmd[l]=='>') l--;
-						curstdin[f]='\0';
-					}
-				}
-
-				if(curstdin[strlen(curstdin)-1]=='\n')
-					curstdin[strlen(curstdin)-1]='\0';
-				if(curstdout[strlen(curstdout)-1]=='\n')
-					curstdout[strlen(curstdout)-1]='\0';
-				if(instate==1){
-					in = open(curstdin, O_RDONLY);
-					dup2(in,0);
-				}
-				if(outstate==1){
-					out = open(curstdout,O_WRONLY | O_TRUNC | O_CREAT, S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);
-					dup2(out,1);
-				}
-				else if (outstate==2){
-					out = open(curstdout,O_WRONLY | O_CREAT|O_APPEND, S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);
-					dup2(out,1);
-				}
-					index++;
-					cmd[j++]='\n';			
-					cmd[j++]='\0';
-					int cmd_len = strlen(cmd);      
-					token = (char *)strtok(cmd,delim);
-					if(token[strlen(token)-1] == '\n')
-						token[strlen(token)-1] = '\0';
-					if(strcmp(token,"echo")==0)             
-						implement_echo(cmd+strlen(token)+1);
-					else if(strcmp(token,"pwd")==0)         
-						printf("%s\n",curdir);
-					else if(strcmp(token,"cd")==0){         
-						cmd[cmd_len-1]='\0';
-						token = strtok(NULL,delim);
-						if(token==NULL)chdir(homedir);
-						else implement_cd(token,homedir,argv[0],cmd,curdir);
-					}
-					else if(strcmp(token,"exit")==0||strcmp("quit",token)==0)        
-						exit(0);
-					else if(strcmp(token,"fg") == 0){
-
-						pid = fork();
-
-						//needs to bring foreground so creating a child process 
-
-						if(pid!=0){
-							pid_t p = stack[top].pid;
-							int err=kill(p,0);
-							if(err==-1 && errno==ESRCH)_exit(0);
-							kill(p,SIGCONT);
-							top--;
-							while(1){
-								pid_t pid_check = waitpid(p,&sig,WNOHANG|WUNTRACED);
-								if(pid_check == p){
-									if(WIFSTOPPED(sig)){
-										top++;
-										stack[top].pid = pid_check;
-										stack[top].type = STOPPED;
-										break;
-									}
-									else if(WIFEXITED(sig))
-										break;
-									else if(WIFSIGNALED(sig))
-										break;
-								}
-							}
-						}
-						else
-							_exit(0);
-					}
-					else if(strcmp(token,"bg")==0)
-						kill(stack[top--].pid,SIGCONT);
-					else if(strcmp(token,"jobs")==0){
-						int k,index=0;
-						for(k=0;k<=top;k++){
-							int err=kill(stack[k].pid,0);
-							if(err==-1 && errno==ESRCH);
-							else{
-								printf("[%d]\t",index+1 );
-								if(stack[k].type==BGD)
-									printf("Running\t");
-								else
-									printf("Stopped\t");
-								print_command(stack[k].pid,tmp1,buffer);
-								index++;
-							}
-						}
-					}
-					else{		
-						//To implement functions other than shell builtins echo cd pwd like ls etc 
-
-						if(cmd[cmd_len-2]=='&'){
-							printf("%s: ",argv[0]);
-							puts("syntax error near unexpected token `|'");
-						}
-						else{
-							pid = fork();//Creating a new process	
-							if(pid==0){			//Child process
-								int i=0;
-								int intemp=dup(0);
-								while(token!=NULL){	
-									a[i]=(char*)malloc(strlen(token)*sizeof(char));
-										strcpy(a[i],token);
-										i++;
-									token = strtok(NULL,delim);
-								}
-
-								if (strcmp(a[0],"ls")==0||strcmp("grep",a[0])==0){
-									a[i]=(char *)malloc(20*sizeof(char));
-									strcpy(a[i++],"--color=auto");
-								}
-
-								//indicating end of command
-
-								a[i]=NULL;
-								int err = execvp(a[0],a);
-								if (err==-1 && errno==2 )fprintf(stderr,"%s: command not found\n",a[0]);
-								int k;
-								for (k=0;k<i;k++)free(a[k]);
-								dup2(intemp,0);
-								_exit(0);
-							}
-							else{	
-								if(bgflag!=0)
-									printf("[%d]\n",pid);
-								//Parent process
-								cache_store(temp,pid,cache);
-								if(bgflag==0){
-									while(1){
-										pid_t pid_check = waitpid(pid,&sig,WNOHANG|WUNTRACED);
-										if(pid_check == pid){
-											if(WIFSTOPPED(sig)){
-												top++;
-												stack[top].pid = pid;
-												stack[top].type = STOPPED;
-												break;
-											}
-											else if(WIFEXITED(sig))
-												break;
-											else if(WIFSIGNALED(sig))
-												break;
-										}
-									}
-								}
-								else{
-									top++;
-									stack[top].pid=pid;
-									stack[top].type=BGD;
-								}
-							}
-						}
-					}
+					my_execute(in,out,&sig,&bgflag,argv[0],pipefl);
 					_exit(0);
 				}
 				else{
@@ -355,185 +424,7 @@ int main(int argc,char *argv[],char *envp[]){
 				index++;
 				cmd[j++]='\n';			
 				cmd[j++]='\0';
-				int l,instate=0,outstate=0;
-				char curstdin[MAX_LENGTH],curstdout[MAX_LENGTH];;
-				for(l=0;cmd[l]!='\n'&&l<strlen(cmd);l++){
-					if(cmd[l]=='>'){
-						if (cmd[l+1]=='>'){
-							outstate=2;
-							cmd[l]=' ';
-							l++;
-						}
-						else outstate = 1;
-						cmd[l]=' ';
-						l++;
-						while(cmd[l]==' ')l++;
-						int f=0;
-						for(;cmd[l]!=' '&&cmd[l]!='<'&&cmd[l]!='\n';l++){
-							curstdout[f++]=cmd[l];
-							cmd[l]=' ';
-						}
-						curstdout[f]='\0';
-					}
-					if(cmd[l]=='<'){
-						instate = 1;
-						cmd[l]=' ';
-						l++;
-						while(cmd[l]==' ')l++;
-						int f=0;
-						for(;cmd[l]!=' '&&cmd[l]!='>'&&cmd[l]!='\n';l++){
-							curstdin[f++]=cmd[l];
-							cmd[l]=' ';
-						}
-						if(cmd[l]=='>') l--;
-						curstdin[f]='\0';
-					}
-				}
-
-				if(curstdin[strlen(curstdin)-1]=='\n')
-					curstdin[strlen(curstdin)-1]='\0';
-				if(curstdout[strlen(curstdout)-1]=='\n')
-					curstdout[strlen(curstdout)-1]='\0';
-				if(instate==1){
-					in = open(curstdin, O_RDONLY);
-					dup2(in,0);
-				}
-				if(outstate==1){
-					out = open(curstdout,O_WRONLY | O_TRUNC | O_CREAT, S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);
-					dup2(out,1);
-				}
-				else if (outstate==2){
-					out = open(curstdout,O_WRONLY | O_CREAT|O_APPEND, S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);
-					dup2(out,1);
-				}
-				int cmd_len = strlen(cmd);      
-				token = (char *)strtok(cmd,delim);
-				if(token[strlen(token)-1] == '\n')
-					token[strlen(token)-1] = '\0';
-				if(strcmp(token,"echo")==0)            
-					implement_echo(cmd+strlen(token)+1);
-				else if(strcmp(token,"pwd")==0)         
-					printf("%s\n",curdir);
-				else if(strcmp(token,"cd")==0){         
-					cmd[cmd_len-1]='\0';
-					token = strtok(NULL,delim);
-					if(token==NULL)chdir(homedir);
-					else implement_cd(token,homedir,argv[0],cmd,curdir);
-				}
-				else if(strcmp(token,"quit")==0||strcmp(token,"exit")==0)        
-					exit(0);
-				else if(strcmp(token,"fg") == 0){
-					pid = fork();
-					if(pid!=0){
-						pid_t p = stack[top].pid;
-						token = strtok(NULL,"\n ");
-						int num = 0,k;
-						if(token!=NULL){
-							for(k=0;token[k]!='\0';k++){
-								num = num*10 + token[k]-'0';
-							}
-							num--;
-							p=stack[num].pid;
-						}
-						for(k=num;k<top;k++)
-							stack[k]=stack[k+1];
-						kill(p,SIGCONT);
-						top--;
-						while(1){
-							pid_t pid_check = waitpid(p,&sig,WNOHANG|WUNTRACED);
-							if(pid_check == p){
-								if(WIFSTOPPED(sig)){
-									top++;
-									stack[top].pid = pid_check;
-									stack[top].type = STOPPED;
-									break;
-								}
-								else if(WIFEXITED(sig))
-									break;
-								else if(WIFSIGNALED(sig))
-									break;
-							}
-						}
-					}
-					else
-						_exit(0);
-				}
-				else if(strcmp(token,"bg")==0)
-					kill(stack[top--].pid,SIGCONT);
-				else if(strcmp(token,"jobs")==0){
-					int k,index=0;
-					for(k=0;k<=top;k++){
-						int err=kill(stack[k].pid,0);
-						if(err==-1 && errno==ESRCH);
-						else{
-							printf("[%d]\t",index+1 );
-							if(stack[k].type==BGD)
-								printf("Running\t");
-							else
-								printf("Stopped\t");
-							print_command(stack[k].pid,tmp1,buffer);
-							index++;
-						}
-					}
-				}
-				else{					
-					int i=strlen(cmd)+1;
-					while(cmd[i]!='\0')if (cmd[i++]=='&') bgflag=1;
-					//Handle functions other than cd,echo,pwd and exit	
-					pid = fork();//Creating a new process	
-					if(pid==0){			
-						//Child process
-						int i=0;
-						while(token!=NULL){	//Tokenizing the given command for giving it to execvp
-							a[i]=(char*)malloc(strlen(token)*sizeof(char));
-							if(strcmp(token,"&")==0);
-							else strcpy(a[i++],token);
-							token = strtok(NULL," \n");
-						}
-						int j=0;
-						if (strcmp(a[0],"ls")==0||strcmp(a[0],"grep")==0){
-							a[i]=(char *)malloc(20*sizeof(char));
-							strcpy(a[i++],"--color=auto");
-						}
-
-						a[i]=NULL;//indicating end of command
-						int err = execvp(a[0],a);		//Execute the command
-						if (err==-1 && errno==2 )fprintf(stderr,"%s: command not found\n",a[0]);
-						int k;
-
-						for (k=0;k<i;k++)free(a[k]);
-						_exit(0);
-					}
-
-					else{	
-						if(bgflag!=0)
-							printf("[%d]\n",pid);
-						cache_store(temp,pid,cache);
-						if(bgflag==0){
-							while(1){
-								pid_t pid_check = waitpid(pid,&sig,WNOHANG|WUNTRACED);
-								if(pid_check == pid){
-									if(WIFSTOPPED(sig)){
-										top++;
-										stack[top].pid = pid;
-
-										stack[top].type = STOPPED;
-										break;
-									}
-									else if(WIFEXITED(sig))
-										break;
-									else if(WIFSIGNALED(sig))
-										break;
-								}
-							}
-						}
-						else{
-							top++;
-							stack[top].pid=pid;
-							stack[top].type=BGD;
-						}
-					}
-				}
+				my_execute(in,out,&sig,&bgflag,argv[0],pipefl);
 				in=0;
 				dup2(stdintemp,0);
 				dup2(stdouttemp,1);

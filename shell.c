@@ -93,7 +93,7 @@ void my_execute(int in,int out,int *sig,int *bgflag,char* shellname,int *pipefl)
 			curstdout[f]='\0';
 		}
 		if(cmd[l]=='<'){
-			finstate = 1;
+			instate = 1;
 			cmd[l]=' ';
 			l++;
 			while(cmd[l]==' ')l++;

@@ -30,22 +30,25 @@
 
 /* Variable classes and global Variables */ 
 
-typedef struct procinfo{
+
+typedef struct procinfo{ //Struct for maintaining processes created by user
 	pid_t pid;
 	int type;
 }procinfo;
 
-char cache[proc_range+10][20];
+char cache[proc_range+10][20];//to store the names of processes
 char commandtot[MAX_LENGTH];
 pid_t pid,pid1,shellpid;
 
-procinfo stack[proc_range+10];
+procinfo stack[proc_range+10];//Stack to mainitain processes
 int top=-1; // stack head 
+
 
 char *usrname,*token,*hostname,*a[102],*mypath,*origin;
 char delim[4]=" \t\n";
 char cmd[MAX_LENGTH],cmd_given[MAX_LENGTH],ch,homedir[MAX_LENGTH],curdir[MAX_LENGTH];
-char temp[MAX_LENGTH],tmp1[MAX_LENGTH];
+
+char temp[MAX_LENGTH],tmp1[MAX_LENGTH]; //Temporary variables to do process 
 unsigned char buffer[4096];
 
 /* Functions */
@@ -68,10 +71,10 @@ void sigint_handler(int signo){
 
 /* Executes the given command */
 
-void my_execute(int in,int out,int *sig,int *bgflag,char* shellname,int pipefl){
+void my_execute(int in,int out,int *sig,int *bgflag,char* shellname,int *pipefl){
 	int l,instate=0,outstate=0;
 	char curstdin[MAX_LENGTH],curstdout[MAX_LENGTH];
-	for(l=0;cmd[l]!='\n'&&l<strlen(cmd);l++){
+	for(l=0 ; cmd[l]!='\n' && l<strlen(cmd) ; l++){
 		if(cmd[l]=='>'){
 			if (cmd[l+1]=='>'){
 				outstate=2;
@@ -90,7 +93,7 @@ void my_execute(int in,int out,int *sig,int *bgflag,char* shellname,int pipefl){
 			curstdout[f]='\0';
 		}
 		if(cmd[l]=='<'){
-			instate = 1;
+			finstate = 1;
 			cmd[l]=' ';
 			l++;
 			while(cmd[l]==' ')l++;
@@ -117,7 +120,7 @@ void my_execute(int in,int out,int *sig,int *bgflag,char* shellname,int pipefl){
 		dup2(out,1);
 	}
 	else if (outstate==2){
-		out = open(curstdout,O_WRONLY | O_CREAT|O_APPEND, S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);
+		out = open(curstdout,O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);
 		dup2(out,1);
 	}
 	int cmd_len = strlen(cmd);      
@@ -135,10 +138,9 @@ void my_execute(int in,int out,int *sig,int *bgflag,char* shellname,int pipefl){
 		else implement_cd(token,homedir,shellname,cmd,curdir);
 	}
 	else if(strcmp(token,"quit")==0||strcmp(token,"exit")==0)        
-		exit(0);
+		_exit(0);
 	else if(strcmp(token,"fg") == 0){
 		pid = fork();
-
 		if(pid!=0){
 			pid_t p = stack[top].pid;
 			token = strtok(NULL,"\n ");
@@ -167,9 +169,7 @@ void my_execute(int in,int out,int *sig,int *bgflag,char* shellname,int pipefl){
 						stack[top].type = STOPPED;
 						break;
 					}
-					else if(WIFEXITED(*sig))
-						break;
-					else if(WIFSIGNALED(*sig))
+					else if(WIFEXITED(*sig) || WIFSIGNALED(*sig))
 						break;
 				}
 			}
@@ -238,19 +238,19 @@ void my_execute(int in,int out,int *sig,int *bgflag,char* shellname,int pipefl){
 	else{					
 		int i=strlen(cmd)+1;
 		while(cmd[i]!='\0')if (cmd[i++]=='&') *bgflag=1;
-		if(*bgflag==1 && pipefl==1){
+		if(*bgflag==1 && *pipefl==1){
 			printf("%s: ",shellname);
 			puts("syntax error near unexpected token `|\'");
 			return;
 		}
 		//Handle functions other than cd,echo,pwd and exit	
-		pid = fork();//Creating a new process	
+		pid = fork();//Creating a new process
 		if(pid==0){			
 			//Child process
 			int i=0;
 			while(token!=NULL){	//Tokenizing the given command for giving it to execvp
 				a[i]=(char*)malloc(strlen(token)*sizeof(char));
-				if(strcmp(token,"&")==0);
+				if(strcmp(token,"&")==0);//avoiding & into the command
 				else strcpy(a[i++],token);
 				token = strtok(NULL," \n");
 			}
@@ -269,11 +269,11 @@ void my_execute(int in,int out,int *sig,int *bgflag,char* shellname,int pipefl){
 			_exit(0);
 		}
 
-		else{	
-			if(*bgflag!=0)
+		else{
+			if(*bgflag!=0){
 				printf("[%d]\n",pid);
+			}
 			cache_store(temp,pid,cache);
-			//printf("%s\n",temp);
 			if(*bgflag==0){
 				while(1){
 					pid_t pid_check = waitpid(pid,sig,WNOHANG|WUNTRACED);
@@ -281,7 +281,6 @@ void my_execute(int in,int out,int *sig,int *bgflag,char* shellname,int pipefl){
 						if(WIFSTOPPED(*sig)){
 							top++;
 							stack[top].pid = pid;
-
 							stack[top].type = STOPPED;
 							break;
 						}
@@ -299,7 +298,7 @@ void my_execute(int in,int out,int *sig,int *bgflag,char* shellname,int pipefl){
 			}
 		}
 	}
-
+	return ;
 }
 
 /* Main code */
@@ -331,18 +330,19 @@ int main(int argc,char *argv[],char *envp[]){
 
 		while((pid=waitpid(-1,&sig,WNOHANG|WUNTRACED))>0) {
 			int state = 0,k,l;
-			for(k=0;k<=top;k++)
+			for(k=0;k<=top;k++){
+
 				if(stack[k].pid==pid){
 					state=1;
 					break;
 				}
-
+			}
 			if(WIFEXITED(sig) && state == 1){
 				printf("Process %s with [%d] exited\n",cache[pid],pid);
 				for(l=k;l<top;l++)
 					stack[l]=stack[l+1];
 				top--;
-			}   
+			} 
 		}
 
 		print_prompt(usrname,hostname,homedir,curdir);  
@@ -404,7 +404,7 @@ int main(int argc,char *argv[],char *envp[]){
 						dup2(fd[1],1);
 						close(fd[1]);
 					}
-					my_execute(in,out,&sig,&bgflag,argv[0],pipefl);
+					my_execute(in,out,&sig,&bgflag,argv[0],&pipefl);
 					_exit(0);
 				}
 				else{
@@ -424,7 +424,7 @@ int main(int argc,char *argv[],char *envp[]){
 				index++;
 				cmd[j++]='\n';			
 				cmd[j++]='\0';
-				my_execute(in,out,&sig,&bgflag,argv[0],pipefl);
+				my_execute(in,out,&sig,&bgflag,argv[0],&pipefl);
 				in=0;
 				dup2(stdintemp,0);
 				dup2(stdouttemp,1);

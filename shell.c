@@ -185,16 +185,20 @@ void my_execute(int in,int out,int *sig,int *bgflag,char* shellname,int *pipefl)
 		int k,index=0;
 		for(k=0;k<=top;k++){
 			int err=kill(stack[k].pid,0);
-			if(err==-1 && errno==ESRCH);
-			else{
-				printf("[%d]\t",index+1 );
-				if(stack[k].type==BGD)
-					printf("Running\t");
-				else
-					printf("Stopped\t");
-				print_command(stack[k].pid,tmp1,buffer);
-				index++;
+			if(err==-1 && errno==ESRCH){
+				int ti;
+				for(ti=k;ti<top;ti++)stack[ti]=stack[ti+1];
+				k--;
+				top--;
 			}
+		}
+		for(k=0;k<=top;k++){
+			printf("[%d]\t",k+1 );
+			if(stack[k].type==BGD)
+				printf("Running\t");
+			else
+				printf("Stopped\t");
+			print_command(stack[k].pid,tmp1,buffer);
 		}
 	}
 	else if(strcmp(token,"kjob")==0){

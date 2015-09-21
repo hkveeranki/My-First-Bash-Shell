@@ -140,9 +140,8 @@ int main(int argc,char *argv[],char *envp[]){
 			if(c=='|'){
 				pipefl=1;
 				pipe(fd);
-
 				if((pid1=fork())==0){
-					
+
 					if(in!=0){
 						//not stdin
 						dup2(in,0);
@@ -154,7 +153,57 @@ int main(int argc,char *argv[],char *envp[]){
 						dup2(fd[1],1);
 						close(fd[1]);
 					}
+					int l,instate=0,outstate=0;
+					char curstdin[MAX_LENGTH],curstdout[MAX_LENGTH];;
+				for(l=0;cmd[l]!='\n'&&l<strlen(cmd);l++){
+					if(cmd[l]=='>'){
+						if (cmd[l+1]=='>'){
+							outstate=2;
+							cmd[l]=' ';
+							l++;
+						}
+						else outstate = 1;
+						cmd[l]=' ';
+						l++;
+						while(cmd[l]==' ')l++;
+						int f=0;
+						for(;cmd[l]!=' '&&cmd[l]!='<'&&cmd[l]!='\n';l++){
+							curstdout[f++]=cmd[l];
+							cmd[l]=' ';
+						}
+						curstdout[f]='\0';
+					}
+					if(cmd[l]=='<'){
+						instate = 1;
+						cmd[l]=' ';
+						l++;
+						while(cmd[l]==' ')l++;
+						int f=0;
+						for(;cmd[l]!=' '&&cmd[l]!='>'&&cmd[l]!='\n';l++){
+							curstdin[f++]=cmd[l];
+							cmd[l]=' ';
+						}
+						if(cmd[l]=='>') l--;
+						curstdin[f]='\0';
+					}
+				}
 
+				if(curstdin[strlen(curstdin)-1]=='\n')
+					curstdin[strlen(curstdin)-1]='\0';
+				if(curstdout[strlen(curstdout)-1]=='\n')
+					curstdout[strlen(curstdout)-1]='\0';
+				if(instate==1){
+					in = open(curstdin, O_RDONLY);
+					dup2(in,0);
+				}
+				if(outstate==1){
+					out = open(curstdout,O_WRONLY | O_TRUNC | O_CREAT, S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);
+					dup2(out,1);
+				}
+				else if (outstate==2){
+					out = open(curstdout,O_WRONLY | O_CREAT|O_APPEND, S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);
+					dup2(out,1);
+				}
 					index++;
 					cmd[j++]='\n';			
 					cmd[j++]='\0';
@@ -175,7 +224,7 @@ int main(int argc,char *argv[],char *envp[]){
 					else if(strcmp(token,"exit")==0||strcmp("quit",token)==0)        
 						exit(0);
 					else if(strcmp(token,"fg") == 0){
-						
+
 						pid = fork();
 
 						//needs to bring foreground so creating a child process 
@@ -233,23 +282,15 @@ int main(int argc,char *argv[],char *envp[]){
 						else{
 							pid = fork();//Creating a new process	
 							if(pid==0){			//Child process
-								int i=0i,infl=0;
+								int i=0;
 								int intemp=dup(0);
 								while(token!=NULL){	
 									a[i]=(char*)malloc(strlen(token)*sizeof(char));
-									if(strcmp(token,"<")==0)infl=1;
-									else if(infl==1){
-									int fd0=open(token,O_RDONLY);
-									dup2(fd0,0);
-									close(fd0);
-									infl=0;
-									}
-									else{
-									strncpy(a[i],token,strlen(token));
-									i++;
-									}
+										strcpy(a[i],token);
+										i++;
 									token = strtok(NULL,delim);
 								}
+
 								if (strcmp(a[0],"ls")==0||strcmp("grep",a[0])==0){
 									a[i]=(char *)malloc(20*sizeof(char));
 									strcpy(a[i++],"--color=auto");
@@ -258,7 +299,7 @@ int main(int argc,char *argv[],char *envp[]){
 								//indicating end of command
 
 								a[i]=NULL;
-								int err = execvp(a[0],a);		
+								int err = execvp(a[0],a);
 								if (err==-1 && errno==2 )fprintf(stderr,"%s: command not found\n",a[0]);
 								int k;
 								for (k=0;k<i;k++)free(a[k]);
